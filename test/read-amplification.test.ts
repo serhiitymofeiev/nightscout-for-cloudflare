@@ -108,17 +108,17 @@ describe("synthetic device-status read amplification", () => {
       [
         {
           "label": "upload-no-browser",
-          "reads": 14,
+          "reads": 13,
           "writes": 14,
         },
         {
           "label": "browser-connect",
-          "reads": 2165,
+          "reads": 2130,
           "writes": 32,
         },
         {
           "label": "upload-with-browser",
-          "reads": 41,
+          "reads": 17,
           "writes": 15,
         },
       ]

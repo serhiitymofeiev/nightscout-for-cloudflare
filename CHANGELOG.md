@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1-beta.1 — Trio read optimization testing branch (2026-09-29)
+
+Branch `1.3.1` adds incremental caching for legacy device-status writes, bounded raw query-prefix caching for unchanged treatments/profile/food, time-aware recent-treatment and Profile Switch cache rules, and fewer duplicate reads during synchronous polling dequeue. Writes, revision history and notification/output semantics are retained. Tests cover rollback, time-window boundaries, output budgets and persistence after eviction. See [branch testing evidence](docs/testing/TRIO_READ_OPTIMIZATION.md). This is a branch-only test publication; no new Release or web-installer deployment is included.
+
+
 ## 1.3.0-beta.2 — Nightscout 15.0.8 adaptation and read/write optimization (2026-09-15, prerelease)
 
 Adds default-off Cloudflare adapters for Nightscout-source, LibreLinkUp, Glooko and Webhook, plus BRIDGE automatic migration and an explicit legacy protocol mode. Sessions, page cursors and delivery retries survive restart; real-service acceptance remains pending. Fixes fixed-offset Profile timezones and admin date bounds, adds enforced/report-only CSP with configured frame origins, and executes real upstream report modules for GMI/RMS and boundary regressions. The old skipped full-report suite is now honestly marked unresolved. See the [configuration guide](docs/CONFIGURATION.md) and [beta testing evidence](docs/testing/NIGHTSCOUT_15_0_8.md).

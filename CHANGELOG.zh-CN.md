@@ -1,5 +1,10 @@
 # 更新日志
 
+## 1.3.1-beta.1 — Trio 读取优化测试分支（2026-09-29）
+
+`1.3.1` 分支修复 legacy 状态上传缓存遗漏，缓存未变化的治疗/Profile/食物原始查询前缀，处理最近治疗记录与未来 Profile Switch 的时间边界，并减少同步 polling 消息出队的重复读取。保留写入、修订历史和通知/输出语义，覆盖回滚、时间窗口、输出预算与驱逐持久化测试。详见[分支测试说明](docs/testing/TRIO_READ_OPTIMIZATION.md)。本次仅发布分支，不创建 Release 或更新快速安装器。
+
+
 ## 1.3.0-beta.2 — Nightscout 15.0.8 适配与读写优化（2026-09-15，测试版）
 
 新增默认关闭的 Nightscout-source、LibreLinkUp、Glooko 与 Webhook Cloudflare 适配；支持旧 BRIDGE 配置自动迁移和显式 legacy 协议。会话、同步游标及发送重试持久化，真实服务验收仍待进行。修复 Profile 固定偏移时区与日期清理边界，补齐可执行/仅报告 CSP 和配置分屏来源；直接执行官方报表模块验证 GMI/RMS、单位及边界。原先被跳过的整套报表测试已纠正为未完成状态。详见[配置说明](docs/CONFIGURATION.zh-CN.md)及[测试证据](docs/testing/NIGHTSCOUT_15_0_8.md)。

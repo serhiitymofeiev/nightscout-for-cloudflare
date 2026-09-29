@@ -1,6 +1,8 @@
 import { sanitizeStoredDocument, validateLegacyProfileStartDate } from "./storage-purifier";
 import { resolveWebhook, type WebhookEnvironment } from "./webhook-delivery";
 import { DeviceStatusQueryCache } from "./realtime/device-status-query-cache";
+import { AuxiliaryQueryCache } from "./realtime/auxiliary-query-cache";
+import { RecentTreatmentQueryCache } from "./realtime/recent-treatment-query-cache";
 import { RealtimeEntryQueryCache } from "./realtime/entry-query-cache";
 import { DurableObject } from "cloudflare:workers";
 import { SqliteAdminNotifyRepository } from "./admin-notifies";
@@ -798,6 +800,13 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
   private entryCacheMutation = false;
   private realtimeDeviceStatusQueries = new DeviceStatusQueryCache<DbDocument>();
   private deviceStatusCacheMutation = false;
+  private readonly recentTreatmentQueries = new RecentTreatmentQueryCache<DbDocument>();
+  private activeProfileSwitchCache: { at: number; expiresAt: number; nextAt: number; value: string | null } | undefined;
+  private readonly realtimeAuxiliaryQueries = {
+    treatments: new AuxiliaryQueryCache<DbDocument>(),
+    profile: new AuxiliaryQueryCache<DbDocument>(),
+    food: new AuxiliaryQueryCache<DbDocument>(),
+  };
   private readonly activeWebSocketSessions = new Set<string>();
   private storageWriteQuotaBlockedUntil = 0;
   private storageSchemaInitializationPending = false;
@@ -854,6 +863,9 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
   private completeStorageInitialization(): void {
     this.realtimeEntryQueries.clear();
     this.realtimeDeviceStatusQueries.clear();
+    for (const cache of Object.values(this.realtimeAuxiliaryQueries)) cache.clear();
+    this.recentTreatmentQueries.clear();
+    this.activeProfileSwitchCache = undefined;
     // This method is intentionally synchronous. A request cannot observe a
     // half-repaired schema between quota reset and the activation seal.
     this.storageSchemaInitializationPending = false;
@@ -1913,6 +1925,7 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
     return new SqliteDocumentRepository(
       this.ctx.storage,
       (event) => {
+        this.invalidateAuxiliaryQueries(event.collection);
         if (event.collection === "entries" && !this.entryCacheMutation) this.realtimeEntryQueries.clear();
         if (event.collection === "devicestatus" && !this.deviceStatusCacheMutation) {
           this.realtimeDeviceStatusQueries.clear();
@@ -1920,6 +1933,7 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
         try {
           this.realtime.recordApi3StorageMutationInTransaction(event);
         } finally {
+          this.invalidateAuxiliaryQueries(event.collection);
           // A snapshot may have read uncommitted entries. Do not let those
           // values survive a later rollback of the caller's transaction.
           if (event.collection === "entries" && !this.entryCacheMutation) this.realtimeEntryQueries.clear();
@@ -1933,9 +1947,47 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
         if (collection === "devicestatus") {
           this.updateDeviceStatusQueryCache(document);
         }
-        this.recordDataMutationInTransaction(collection);
+        this.invalidateAuxiliaryQueries(collection);
+        try {
+          this.recordDataMutationInTransaction(collection);
+        } finally {
+          // Notification settings may read uncommitted profile data here.
+          this.invalidateAuxiliaryQueries(collection);
+        }
       },
     );
+  }
+
+  private invalidateAuxiliaryQueries(collection: string): void {
+    if (collection === "treatments") {
+      this.recentTreatmentQueries.clear();
+      this.activeProfileSwitchCache = undefined;
+    }
+    if (collection === "treatments" || collection === "profile" || collection === "food") {
+      this.realtimeAuxiliaryQueries[collection].clear();
+    }
+  }
+
+  /** Cache raw loader prefixes, never normalized/budgeted snapshots. */
+  private cachedAuxiliaryRows(statement: string, bindings: SqlStorageValue[]): Iterable<DbDocument> {
+    const load = () => this.ctx.storage.sql.exec<DbDocument>(statement, ...bindings);
+    const collection = /collection = '(treatments|profile|food)'/.exec(statement)?.[1];
+    if (collection !== "treatments" && collection !== "profile" && collection !== "food") return load();
+    if (collection === "treatments" && statement.includes("updated_at >= ?") &&
+      statement.includes("ORDER BY updated_at ASC, id ASC") && statement.includes("LIMIT 100") &&
+      bindings.length === 1 && typeof bindings[0] === "number") {
+      return this.recentTreatmentQueries.read(bindings[0], 100, load);
+    }
+    // Frames and recent-mutation queries have different moving-window semantics.
+    // Keep them on SQL. Only the fixed latest-N selection with a rising lower
+    // sort_time bound can safely remove rows without exposing an unseen suffix.
+    if (/sort_time <=|updated_at >=/.test(statement)) return load();
+    const timed = statement.includes("sort_time >= ?");
+    if (!timed && bindings.length > 0) return load();
+    const lower = timed ? bindings.at(-1) : Number.NEGATIVE_INFINITY;
+    if (typeof lower !== "number") return load();
+    const key = JSON.stringify([statement, timed ? bindings.slice(0, -1) : bindings]);
+    return this.realtimeAuxiliaryQueries[collection].read(key, lower, load);
   }
 
   private updateEntryQueryCache(document?: JsonDocument): void {
@@ -1990,17 +2042,23 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
       return;
     }
     if (!this.realtimeDeviceStatusQueries.ready) return;
-    // Read canonical storage metadata, including updated_at, instead of
-    // guessing ordering from the public API3 document's timestamps.
+    // Prefer the canonical storage id supplied by legacy writes. API3 may
+    // supply only its public identifier; resolve that without scanning history.
+    const id = document._id;
     const identity = document.identifier;
-    if (typeof identity !== "string") {
+    if (typeof id !== "string" && typeof identity !== "string") {
       this.realtimeDeviceStatusQueries.clear();
       return;
     }
-    const rows = this.ctx.storage.sql.exec<DbDocument>(
-      `SELECT id, body, sort_time, updated_at FROM documents
-       WHERE collection = 'devicestatus' AND identifier = ? LIMIT 2`, identity,
-    ).toArray();
+    const rows = typeof id === "string"
+      ? this.ctx.storage.sql.exec<DbDocument>(
+        `SELECT id, body, sort_time, updated_at FROM documents
+         WHERE collection = 'devicestatus' AND id = ? LIMIT 2`, id,
+      ).toArray()
+      : this.ctx.storage.sql.exec<DbDocument>(
+        `SELECT id, body, sort_time, updated_at FROM documents
+         WHERE collection = 'devicestatus' AND identifier = ? LIMIT 2`, identity as string,
+      ).toArray();
     if (rows.length !== 1) this.realtimeDeviceStatusQueries.clear();
     else this.realtimeDeviceStatusQueries.upsert(rows[0]!);
   }
@@ -2995,13 +3053,13 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
   }
 
   private latestStatusProfile(): JsonDocument | undefined {
-    const rows = this.ctx.storage.sql.exec<DbDocument>(
+    const rows = [...this.cachedAuxiliaryRows(
       `SELECT id, body, sort_time, updated_at
        FROM documents
        WHERE collection = 'profile'
        ORDER BY ${PROFILE_CURRENT_ORDER_BY}
-       LIMIT 10`,
-    ).toArray();
+       LIMIT 10`, [],
+    )];
     for (const row of rows) {
       const profile = tryDocument(row);
       if (profile !== null) return profile;
@@ -3015,25 +3073,33 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
 
   /** Locked dataloader's latest one-year zero-duration Profile Switch marker. */
   private activeProfileFromSwitch(now: number): string | null {
-    for (const row of this.ctx.storage.sql.exec<{ profile: SqlStorageValue }>(
-      `SELECT json_extract(body, '$.profile') AS profile
-       FROM documents
-       WHERE collection = 'treatments'
+    const cached = this.activeProfileSwitchCache;
+    if (cached !== undefined && now >= cached.at && now <= cached.expiresAt && now < cached.nextAt) {
+      return cached.value;
+    }
+    const predicate = `collection = 'treatments'
          AND json_extract(body, '$.eventType') = 'Profile Switch'
          AND json_type(body, '$.duration') IN ('integer', 'real')
-         AND CAST(json_extract(body, '$.duration') AS REAL) = 0
-         AND sort_time >= ?
-         AND sort_time <= ?
-       ORDER BY sort_time DESC, updated_at DESC, id ASC
-       LIMIT 1`,
-      now - PROFILE_SWITCH_WINDOW_MS,
-      now,
-    )) {
-      return typeof row.profile === "string" && row.profile.length > 0
-        ? row.profile
-        : null;
-    }
-    return null;
+         AND CAST(json_extract(body, '$.duration') AS REAL) = 0`;
+    const row = this.ctx.storage.sql.exec<{ profile: SqlStorageValue; sort_time: number }>(
+      `SELECT json_extract(body, '$.profile') AS profile, sort_time
+       FROM documents WHERE ${predicate}
+         AND sort_time >= ? AND sort_time <= ?
+       ORDER BY sort_time DESC, updated_at DESC, id ASC LIMIT 1`,
+      now - PROFILE_SWITCH_WINDOW_MS, now,
+    ).toArray()[0];
+    // A future switch can become active without any write. Cache only until
+    // that exact boundary (or the current row's one-year window expires).
+    const nextAt = this.ctx.storage.sql.exec<{ sort_time: number }>(
+      `SELECT sort_time FROM documents WHERE ${predicate} AND sort_time > ?
+       ORDER BY sort_time ASC LIMIT 1`, now,
+    ).toArray()[0]?.sort_time ?? Number.POSITIVE_INFINITY;
+    const value = typeof row?.profile === "string" && row.profile.length > 0 ? row.profile : null;
+    this.activeProfileSwitchCache = {
+      at: now, nextAt, value,
+      expiresAt: row === undefined ? Number.POSITIVE_INFINITY : row.sort_time + PROFILE_SWITCH_WINDOW_MS,
+    };
+    return value;
   }
 
   /** Locked ddata loader's distinct latest Profile Switch marker semantics. */
@@ -3297,7 +3363,7 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
       // window. SQLite updated_at is the durable equivalent across DO
       // eviction; one HTTP batch is capped at 100, so this stays bounded.
       append(this.realtimeDocuments(
-        `SELECT id, body, sort_time
+        `SELECT id, body, sort_time, updated_at
          FROM documents
          WHERE collection = 'treatments'
            AND updated_at >= ?
@@ -3555,7 +3621,7 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
     rows?: Iterable<DbDocument>,
   ): RealtimeDocument[] {
     const documents: RealtimeDocument[] = [];
-    for (const row of rows ?? this.ctx.storage.sql.exec<DbDocument>(statement, ...bindings)) {
+    for (const row of rows ?? this.cachedAuxiliaryRows(statement, bindings)) {
       if (!realtimeStoredBodyAllowed(row.body)) break;
       let parsed: RealtimeDocument;
       try {
@@ -4744,10 +4810,11 @@ export class EntryStore extends DurableObject<EntryStoreEnv> {
       );
       const result = JSON.stringify(
         documents.map((document) =>
-          this.documentRepository().createLegacyDocument(
-            collection,
-            normalizeLegacyDeviceStatusDocument(document, Date.now(), predictionsMaxSize),
-          ).document),
+          this.withDeviceStatusCacheMutation(collection, () =>
+            this.documentRepository().createLegacyDocument(
+              collection,
+              normalizeLegacyDeviceStatusDocument(document, Date.now(), predictionsMaxSize),
+            )).document),
       );
       await this.publishRootDataUpdate();
       return result;

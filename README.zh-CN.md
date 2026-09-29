@@ -8,15 +8,13 @@
 
 这是独立、非官方的开源移植项目。实际费用取决于所选 Cloudflare 套餐和用量，优化不会提高平台额度。
 
-> **当前版本：NSCF 1.3.0-beta.2 · 基于 Nightscout 15.0.8。**
+> **1.3.1 分支测试版：NSCF 1.3.1-beta.1 · 基于 Nightscout 15.0.8。**
 >
-> 1.3 仍是测试版。快速安装器与下方 GitHub 一键部署按钮均提供 **1.3.0-beta.2**，快速安装器支持符合条件的 1.2.0 原站升级。详见[Beta 发布说明](https://github.com/sid-luo/nightscout-for-cloudflare/releases/tag/v1.3.0-beta.2)；此前正式版保留在 [v1.2.0](https://github.com/sid-luo/nightscout-for-cloudflare/tree/v1.2.0)。
+> 本分支测试 Trio/v1 状态补传、治疗历史缓存和实时消息读取优化。详见[测试说明和 SQL 对照](docs/testing/TRIO_READ_OPTIMIZATION.md)。尚未创建正式 Release，快速安装器仍提供 **1.3.0-beta.2**；安装器不会部署或升级到本分支。
 
-> ### 🚀 [打开快速安装器](https://ns.sidluo.com/)
->
-> 无需 GitHub，无需命令行，按页面提示部署到自己的 Cloudflare 账号。
+测试此版本请检出 `1.3.1` 分支并按测试说明构建。已有实例需要保留原 Worker 名称、数据库绑定和设置；本次发布分支不会自动修改任何实例。
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sid-luo/nightscout-for-cloudflare)
+[现有 beta.2 快速安装器](https://ns.sidluo.com/) · [现有 beta.2 的 GitHub 部署入口](https://deploy.workers.cloudflare.com/?url=https://github.com/sid-luo/nightscout-for-cloudflare)
 
 ## 为什么做这个项目
 
@@ -106,7 +104,7 @@ Nightscout for Cloudflare 是 Nightscout 的独立、非官方 Cloudflare
 移植版本。Nightscout 上游版本和移植版本使用各自独立的版本号：
 
 - Nightscout 上游版本：**15.0.8**
-- Nightscout for Cloudflare 版本：**1.3.0-beta.2**
+- Nightscout for Cloudflare 分支版本：**1.3.1-beta.1**
 
 原版 Admin Tools 的对应功能仍然保留，但本项目使用 SQLite Durable Objects
 存储数据，而不是 MongoDB。因此，页面中的部分名称会调整为与实际存储方式无关

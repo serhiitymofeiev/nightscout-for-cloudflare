@@ -8,15 +8,13 @@ Deploy Nightscout to your own Cloudflare account without renting a separate serv
 
 This is an independent, unofficial open-source port. Actual costs depend on your Cloudflare plan and usage; application optimizations do not increase the platform's allowances.
 
-> **Current version: NSCF 1.3.0-beta.2 · Based on Nightscout 15.0.8.**
+> **1.3.1 testing branch: NSCF 1.3.1-beta.1 · Based on Nightscout 15.0.8.**
 >
-> Version 1.3 is still in beta. Both the web installer and the GitHub deployment button below provide **1.3.0-beta.2**. The web installer supports in-place upgrades from eligible 1.2.0 installations. See the [Beta release notes](https://github.com/sid-luo/nightscout-for-cloudflare/releases/tag/v1.3.0-beta.2); the previous stable version remains available at [v1.2.0](https://github.com/sid-luo/nightscout-for-cloudflare/tree/v1.2.0).
+> This branch tests Trio/v1 backfill, treatment-history caching and realtime queue read optimizations. See the [testing instructions and SQL measurements](docs/testing/TRIO_READ_OPTIMIZATION.md). There is no new Release; the web installer still provides **1.3.0-beta.2** and cannot install or upgrade to this branch.
 
-> ### 🚀 [Open the web installer](https://nscf.sidluo.com/)
->
-> No GitHub. No command line. Deploy directly to your own Cloudflare account.
+Check out branch `1.3.1` and follow the testing instructions to build this version. Existing instances require their original Worker name, database bindings and settings. Publishing this branch does not update any instance automatically.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sid-luo/nightscout-for-cloudflare)
+[Existing beta.2 web installer](https://nscf.sidluo.com/) · [Existing beta.2 GitHub deployment](https://deploy.workers.cloudflare.com/?url=https://github.com/sid-luo/nightscout-for-cloudflare)
 
 ## Why this project exists
 
@@ -107,7 +105,7 @@ Nightscout. It keeps the upstream Nightscout version and the port version
 separate:
 
 - Nightscout upstream version: **15.0.8**
-- Nightscout for Cloudflare version: **1.3.0-beta.2**
+- Nightscout for Cloudflare branch version: **1.3.1-beta.1**
 
 The upstream Admin Tools still provide their corresponding functions, but this
 port stores records in SQLite Durable Objects instead of MongoDB. Some visible

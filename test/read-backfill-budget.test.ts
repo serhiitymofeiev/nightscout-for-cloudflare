@@ -75,7 +75,7 @@ describe("complete synthetic API3 device-status backfill", () => {
     expect(metrics.uploaded).toBe(10_000);
     expect(metrics).toMatchInlineSnapshot(`
       {
-        "reads": 410098,
+        "reads": 170098,
         "uploaded": 10000,
         "writes": 150001,
       }

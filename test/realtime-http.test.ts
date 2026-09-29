@@ -616,6 +616,10 @@ describe("Engine.IO 3/4 polling HTTP adapter", () => {
       );
     });
 
+    // Raw SQL fixture writes bypass repository cache invalidation. Reopen the
+    // object so this assertion exercises the persisted documents.
+    await evictDurableObject(stub);
+
     const { sid } = await open(name);
     expect((await send(name, sid, clientPayload({ type: "connect", namespace: "/" }))).status)
       .toBe(200);
@@ -836,6 +840,10 @@ describe("Engine.IO 3/4 polling HTTP adapter", () => {
       );
     });
 
+    // Raw SQL fixture writes bypass repository cache invalidation. Reopen the
+    // object so this assertion exercises the persisted documents.
+    await evictDurableObject(stub);
+
     const { sid } = await open(name);
     expect((await send(name, sid, clientPayload({ type: "connect", namespace: "/" }))).status)
       .toBe(200);
@@ -944,6 +952,10 @@ describe("Engine.IO 3/4 polling HTTP adapter", () => {
       );
     });
 
+    // Raw SQL fixture writes bypass repository cache invalidation. Reopen the
+    // object so this assertion exercises the persisted documents.
+    await evictDurableObject(stub);
+
     const { sid } = await open(name);
     expect((await send(name, sid, clientPayload({ type: "connect", namespace: "/" }))).status)
       .toBe(200);
@@ -1018,6 +1030,10 @@ describe("Engine.IO 3/4 polling HTTP adapter", () => {
       );
     });
 
+    // Raw SQL fixture writes bypass repository cache invalidation. Reopen the
+    // object so this assertion exercises the persisted documents.
+    await evictDurableObject(stub);
+
     const { sid } = await open(name);
     expect((await send(name, sid, clientPayload({ type: "connect", namespace: "/" }))).status)
       .toBe(200);
@@ -1083,6 +1099,10 @@ describe("Engine.IO 3/4 polling HTTP adapter", () => {
         now,
       );
     });
+
+    // Raw SQL fixture writes bypass repository cache invalidation. Reopen the
+    // object so this assertion exercises the persisted documents.
+    await evictDurableObject(stub);
 
     const { sid } = await open(name);
     expect((await send(name, sid, clientPayload({ type: "connect", namespace: "/" }))).status)

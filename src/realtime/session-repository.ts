@@ -1492,9 +1492,22 @@ export class SqliteRealtimeSessionRepository {
     maxPackets = REALTIME_MAX_QUEUE_PACKETS,
     maxBytes = REALTIME_MAX_PAYLOAD_BYTES,
   ): string[] {
-    const batch = this.peekFrames(sid, maxPackets, maxBytes);
+    return this.dequeueFramesForSession(this.requireSession(sid), maxPackets, maxBytes);
+  }
+
+  private dequeueFramesForSession(
+    session: RealtimeSession,
+    maxPackets = REALTIME_MAX_QUEUE_PACKETS,
+    maxBytes = REALTIME_MAX_PAYLOAD_BYTES,
+  ): string[] {
+    const batch = this.peekFramesForSession(session, maxPackets, maxBytes);
     if (batch === null) return [];
-    this.acknowledgeFrames(sid, batch);
+    // Unlike a WebSocket peek/ack pair, dequeue is one synchronous operation:
+    // no await or caller callback can change this session or the selected FIFO
+    // prefix. Reuse the rows just read instead of rereading both to validate
+    // our own batch. Public acknowledgeFrames retains its durable recheck.
+    this.validateFrameBatch(session, batch);
+    this.removeFrameBatch(session.sid, batch);
     return batch.frames;
   }
 
@@ -1503,7 +1516,14 @@ export class SqliteRealtimeSessionRepository {
     maxPackets = REALTIME_MAX_QUEUE_PACKETS,
     maxBytes = REALTIME_MAX_PAYLOAD_BYTES,
   ): RealtimeWebSocketFrameBatch | null {
-    const session = this.requireSession(sid);
+    return this.peekFramesForSession(this.requireSession(sid), maxPackets, maxBytes);
+  }
+
+  private peekFramesForSession(
+    session: RealtimeSession,
+    maxPackets: number,
+    maxBytes: number,
+  ): RealtimeWebSocketFrameBatch | null {
     if (session.outboundPackets === 0) return null;
     const boundedPackets = Math.max(
       1,
@@ -1520,7 +1540,7 @@ export class SqliteRealtimeSessionRepository {
          WHERE sid = ?
          ORDER BY sequence
          LIMIT ?`,
-        sid,
+        session.sid,
         boundedPackets,
       )
       .toArray();
@@ -1558,15 +1578,7 @@ export class SqliteRealtimeSessionRepository {
 
   acknowledgeFrames(sid: string, batch: RealtimeWebSocketFrameBatch): void {
     const session = this.requireSession(sid);
-    if (
-      batch.packetCount <= 0
-      || batch.packetCount > session.outboundPackets
-      || batch.byteLength < 0
-      || batch.byteLength > session.outboundBytes
-      || !Number.isSafeInteger(batch.lastSequence)
-    ) {
-      throw new Error("realtime acknowledgement does not fit the stored queue");
-    }
+    this.validateFrameBatch(session, batch);
     const prefix = this.storage.sql.exec<QueuePrefixRow>(
       `SELECT COUNT(*) AS packet_count,
               COALESCE(SUM(byte_length), 0) AS byte_length,
@@ -1583,6 +1595,25 @@ export class SqliteRealtimeSessionRepository {
     ) {
       throw new Error("realtime acknowledgement no longer matches the stored FIFO prefix");
     }
+    this.removeFrameBatch(sid, batch);
+  }
+
+  private validateFrameBatch(
+    session: RealtimeSession,
+    batch: RealtimeWebSocketFrameBatch,
+  ): void {
+    if (
+      batch.packetCount <= 0
+      || batch.packetCount > session.outboundPackets
+      || batch.byteLength < 0
+      || batch.byteLength > session.outboundBytes
+      || !Number.isSafeInteger(batch.lastSequence)
+    ) {
+      throw new Error("realtime acknowledgement does not fit the stored queue");
+    }
+  }
+
+  private removeFrameBatch(sid: string, batch: RealtimeWebSocketFrameBatch): void {
     this.storage.sql.exec(
       `DELETE FROM realtime_outbound_packets
        WHERE sid = ? AND sequence <= ?`,
@@ -1602,7 +1633,7 @@ export class SqliteRealtimeSessionRepository {
 
   dequeuePayload(sid: string): string | null {
     const session = this.requireSession(sid);
-    const frames = this.dequeueFrames(sid);
+    const frames = this.dequeueFramesForSession(session);
     return frames.length === 0
       ? null
       : session.engineProtocol === 3
