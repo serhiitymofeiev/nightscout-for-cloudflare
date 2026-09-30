@@ -1,12 +1,15 @@
-# NSCF 1.3 beta — based on Nightscout 15.0.8
+# NSCF 1.3 adaptation — Nightscout 15.0.8 testing record
 
-NSCF version: **1.3.0-beta.2**. Development branch:
+This document preserves the **1.3.0-beta.2** acceptance record from September 2026,
+including its unresolved limitations. The tested source remains available at
 [`v1.3.0-beta.2`](https://github.com/sid-luo/nightscout-for-cloudflare/tree/v1.3.0-beta.2).
 Beta refers to the NSCF adaptation; official Nightscout 15.0.8 is a stable upstream release.
-This remains a Beta release. GitHub `main` now provides 1.3.0-beta.2; the previous
-stable version remains available at [v1.2.0](https://github.com/sid-luo/nightscout-for-cloudflare/tree/v1.2.0).
-The web installer and upgrade service now provide beta.2. See the
-[Beta release notes](https://github.com/sid-luo/nightscout-for-cloudflare/releases/tag/v1.3.0-beta.2).
+
+The current stable NSCF release is **1.3.1**, which includes these changes and the
+subsequent [Trio read optimization](TRIO_READ_OPTIMIZATION.md). GitHub `main` and
+the web installers now provide 1.3.1. Historical test counts and observations below
+remain attributed to their original revisions; promotion to stable does not mark
+unresolved items as fixed or validate every third-party service.
 Existing user instances are not upgraded automatically.
 
 ## What changed
@@ -51,8 +54,8 @@ Existing user instances are not upgraded automatically.
 
 ## Web installation and in-place upgrade acceptance — 2026-09-15
 
-The Chinese and English installer backends and embedded package now provide
-**1.3.0-beta.2**. Both sites retain their existing pages, styles, scripts and
+At this acceptance date, the Chinese and English installer backends and embedded
+package provided **1.3.0-beta.2**. Both sites retain their existing pages, styles, scripts and
 OAuth flows; the displayed release version comes from the current package.
 Published pages and package files were read back and checked against local
 hashes. Installer settings, bindings, callback URLs and authorization scopes
@@ -234,10 +237,13 @@ for opt-in settings and intentional platform limits. New SQLite DO migrations
 v3 (SourceConnector) and v4 (WebhookDelivery) retain existing v1/v2 namespaces.
 Sources and Webhook use the default dataset only; other tenants cannot activate
 global credentials. Node/Docker/Mongo process features remain inapplicable.
-Real-account AAPS/Loop/CGM and real Webhook receiver acceptance are required before
-stable release; synthetic tests do not replace them.
+The beta.2 test plan listed real-account AAPS/Loop/CGM and real Webhook receiver
+acceptance before stable release. That coverage was not completed for every
+service: the optional new adapters remain disabled by default in 1.3.1, and
+promotion to stable does not extend validation to untested integrations.
+Synthetic tests do not replace real-service acceptance.
 
-## Running your own isolated test instance
+## Reproducing the historical beta.2 test instance
 
 Use a **separate Worker name**, its own Durable Object namespaces and a new
 address. A preview URL of the production Worker does not isolate its data.
@@ -258,8 +264,9 @@ For Cloudflare Git integration, select this testing branch and use
 `NSCF_AUTO_UPDATE=0` in the build environment. Select the intended test account,
 choose a unique Worker name, and set a separate `API_SECRET`. Keep the same
 **test** name/data space for later beta commits so testing data persists. The
-web installer now provides **1.3.0-beta.2**. The GitHub deployment button follows
-the repository branch identified in the README.
+web installer provided **1.3.0-beta.2** at that time; it now defaults to **1.3.1**.
+The commands above deliberately use the historical beta.2 tag. For the current
+release, follow the [README](../../README.md).
 
 An independent maintainer test instance was deployed on 2026-09-08.
 The first deployment used the verified
